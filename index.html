@@ -176,7 +176,7 @@
         </div>
         <div class="ios-item">
             <label>🏃 提早下班 <span style="font-size:12px; color:#8E8E93; font-weight:normal;">(最低16:50)</span></label>
-            <input type="time" id="tEarly" value="16:21">
+            <input type="time" id="tEarly">
         </div>
     </div>
 
@@ -198,10 +198,7 @@
     function run() {
         const tIn = document.getElementById('tIn').value;
         const tEarly = document.getElementById('tEarly').value;
-        if (!tIn) {
-            alert("請先輸入上班刷卡時間！");
-            return;
-        }
+        if (!tIn) return; // 若未輸入上班時間則不動作
 
         const toMin = (v) => { let [h, m] = v.split(':').map(Number); return h * 60 + m; };
         const toStr = (m) => { return `${Math.floor(m/60).toString().padStart(2,'0')}:${(m%60).toString().padStart(2,'0')}`; };
@@ -255,11 +252,10 @@
         html += `<div class="section-title">📊 標準下班時間</div>` + getGoal(8) + getGoal(7);
 
         // ==========================================
-        // 3. 提早下班分析 (全新大字體介面)
+        // 3. 提早下班分析 (大字體介面)
         // ==========================================
         if (tEarly) {
             let earlyMinInput = toMin(tEarly);
-            // 這裡不再用 16:50 限制去算實際工時，因為你就是想提早走
             let actualOutMin = Math.min(earlyMinInput, deadline); 
             let workMin = actualOutMin - inMin - lunch;
             let gap7 = 420 - workMin; 
@@ -272,11 +268,7 @@
             } else {
                 let leaveH = Math.ceil(gap7 / 30) * 0.5;
                 let leaveM = leaveH * 60;
-                
-                // 計算「虛擬上班時間」(把請假往前推)
                 let virtualIn = inMin - leaveM;
-                
-                // 計算有了假單加持後，確切幾點滿 7 小時
                 let hit7hTime = virtualIn + 420 + lunch;
                 
                 html += `
@@ -306,6 +298,25 @@
 
         document.getElementById('result').innerHTML = html;
     }
+
+    // ==========================================
+    // 電腦版防誤觸：自動收合與計算監聽器
+    // ==========================================
+    const timeInputs = document.querySelectorAll('input[type="time"]');
+    
+    timeInputs.forEach(input => {
+        // 當游標離開輸入框時自動計算
+        input.addEventListener('change', run);
+        
+        // 電腦版：按下 Enter 鍵強制收起選單並計算
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                this.blur(); 
+                run();       
+            }
+        });
+    });
+
 </script>
 
 </body>
