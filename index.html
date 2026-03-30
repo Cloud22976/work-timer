@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    
     <title>工時專家</title>
     
     <meta name="apple-mobile-web-app-title" content="工時專家">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3652/3652191.png">
     
     <style>
@@ -149,6 +147,18 @@
         .success-text { color: var(--success); font-weight: bold; }
         .info-text { font-size: 13px; color: var(--gray); margin-top: 6px; font-weight: 500;}
         
+        /* 提早下班專用高光區塊 */
+        .highlight-box { background: #FFF9F0; padding: 15px; border-radius: 12px; margin-bottom: 12px; border: 1px solid #FFE0B2; }
+        .highlight-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .highlight-row:last-child { margin-bottom: 0; }
+        .highlight-label { color: #E65100; font-weight: 700; font-size: 16px; }
+        .highlight-val-large { color: var(--danger); font-weight: 800; font-size: 24px; }
+        .highlight-range { font-family: monospace; font-weight: bold; background: #FFE0B2; color: #E65100; padding: 6px 10px; border-radius: 8px; font-size: 16px; }
+        
+        .success-box { background: #F0FDF4; padding: 15px; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #C8E6C9; }
+        .success-label { color: #1B5E20; font-weight: 700; font-size: 16px; }
+        .success-val-large { color: #1B5E20; font-weight: 800; font-size: 22px; }
+
         @keyframes fadeIn { 
             from { opacity: 0; transform: translateY(10px); } 
             to { opacity: 1; transform: translateY(0); } 
@@ -166,7 +176,7 @@
         </div>
         <div class="ios-item">
             <label>🏃 提早下班 <span style="font-size:12px; color:#8E8E93; font-weight:normal;">(最低16:50)</span></label>
-            <input type="time" id="tEarly">
+            <input type="time" id="tEarly" value="16:21">
         </div>
     </div>
 
@@ -179,14 +189,12 @@
 </div>
 
 <script>
-    // 清除按鈕功能
     function clearAll() {
-        document.getElementById('tIn').value = "09:00"; // 預設回到九點
+        document.getElementById('tIn').value = "09:00";
         document.getElementById('tEarly').value = "";
         document.getElementById('result').innerHTML = "";
     }
 
-    // 主邏輯運算
     function run() {
         const tIn = document.getElementById('tIn').value;
         const tEarly = document.getElementById('tEarly').value;
@@ -207,7 +215,7 @@
         let html = "";
 
         // ==========================================
-        // 1. 遲到檢查 (超過 09:20)
+        // 1. 遲到檢查
         // ==========================================
         if (inMin > latestIn) {
             let lateM = inMin - latestIn;
@@ -221,23 +229,19 @@
         }
 
         // ==========================================
-        // 2. 標準下班分析 (8小時 / 7小時)
+        // 2. 標準下班分析 (滿 8h / 7h)
         // ==========================================
         function getGoal(targetH) {
             let targetM = targetH * 60;
-            // 預計下班時間不能早於 16:50
             let idealOff = Math.max(earliestOff, inMin + targetM + lunch);
             let res = `<div class="ios-box"><div class="res-row"><span class="res-label">滿 ${targetH} 小時</span>`;
             
             if (idealOff <= deadline) {
-                // 順利在 18:20 前達標
                 res += `<span class="res-val success-text">${toStr(idealOff)}</span></div>`;
-                // 若工時滿了，但受限於 16:50 規定
                 if (idealOff === earliestOff && (inMin + targetM + lunch) < earliestOff) {
                     res += `<div class="info-text">💡 已滿 ${targetH}h，但受限於最早 16:50 下班規定。</div>`;
                 }
             } else {
-                // 待到 18:20 仍然不足
                 let actualWorkAtDeadline = deadline - inMin - lunch;
                 let gap = targetM - actualWorkAtDeadline;
                 let leaveH = Math.ceil(gap / 30) * 0.5;
@@ -251,38 +255,55 @@
         html += `<div class="section-title">📊 標準下班時間</div>` + getGoal(8) + getGoal(7);
 
         // ==========================================
-        // 3. 提早下班分析 (若有填寫)
+        // 3. 提早下班分析 (全新大字體介面)
         // ==========================================
         if (tEarly) {
             let earlyMinInput = toMin(tEarly);
-            let isViolating = earlyMinInput < earliestOff;
+            // 這裡不再用 16:50 限制去算實際工時，因為你就是想提早走
+            let actualOutMin = Math.min(earlyMinInput, deadline); 
+            let workMin = actualOutMin - inMin - lunch;
+            let gap7 = 420 - workMin; 
             
-            // 提早下班時間：不能早於 16:50，不能晚於 18:20
-            let realEarlyMin = Math.max(earliestOff, Math.min(earlyMinInput, deadline));
-            
-            html += `<div class="section-title">🏃 提早下班分析 (${toStr(earlyMinInput)})</div><div class="ios-box" style="border-left: 5px solid var(--primary)">`;
-            
-            if (isViolating) {
-                html += `<div style="color:var(--danger); font-weight:bold; margin-bottom:12px; font-size:15px;">⚠️ 警告：早於 16:50 規定時間</div>`;
-            }
-
-            // 計算到提早下班時間為止的實際工時
-            let workMin = realEarlyMin - inMin - lunch;
-            let gap7 = 420 - workMin; // 以滿足最低標 7 小時為基準
+            html += `<div class="section-title">🏃 提早下班分析 (${toStr(earlyMinInput)})</div>`;
+            html += `<div class="ios-box" style="border-left: 6px solid #FF9500; padding: 20px 15px;">`;
             
             if (gap7 <= 0) {
-                html += `<div class="success-text">✨ 此時間下班已滿足 7 小時最低標</div>`;
+                html += `<div class="success-text" style="font-size:18px;">✨ 此時間下班已滿足 7 小時最低標！</div>`;
             } else {
                 let leaveH = Math.ceil(gap7 / 30) * 0.5;
-                html += `<div class="res-row"><span class="res-label">需補假單時數</span><span class="res-val" style="color:var(--danger)">${leaveH}h</span></div>`;
-                html += `<div class="leave-badge">建議請假區間 (由刷卡點往前推)：<br>`;
-                html += `<span class="leave-range">單據區間：${toStr(inMin - leaveH*60)} - ${toStr(inMin)}</span>`;
-                html += `</div>`;
+                let leaveM = leaveH * 60;
+                
+                // 計算「虛擬上班時間」(把請假往前推)
+                let virtualIn = inMin - leaveM;
+                
+                // 計算有了假單加持後，確切幾點滿 7 小時
+                let hit7hTime = virtualIn + 420 + lunch;
+                
+                html += `
+                <div class="highlight-box">
+                    <div class="highlight-row">
+                        <span class="highlight-label">需請假時數</span>
+                        <span class="highlight-val-large">${leaveH} <span style="font-size:16px;">h</span></span>
+                    </div>
+                    <div class="highlight-row">
+                        <span class="highlight-label">請假單區間</span>
+                        <span class="highlight-range">${toStr(virtualIn)} - ${toStr(inMin)}</span>
+                    </div>
+                </div>
+
+                <div class="success-box">
+                    <span class="success-label">滿 7 小時下班時間</span>
+                    <span class="success-val-large">${toStr(hit7hTime)}</span>
+                </div>
+                
+                <div class="info-text" style="margin-top: 12px; font-size: 13px; color: #555;">
+                    💡 說明：填寫上方區間的假單後，您當天只要待到 <b>${toStr(hit7hTime)}</b> 即可湊滿 7 小時。
+                </div>
+                `;
             }
             html += `</div>`;
         }
 
-        // 將結果渲染至畫面
         document.getElementById('result').innerHTML = html;
     }
 </script>
