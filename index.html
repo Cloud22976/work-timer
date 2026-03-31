@@ -66,7 +66,7 @@
     <div class="ios-group">
         <div class="ios-item">
             <label>🕗 上班刷卡</label>
-            <input type="time" id="tIn" value="14:00" oninput="run()" onchange="run()">
+            <input type="time" id="tIn" value="09:25" oninput="run()" onchange="run()">
         </div>
         <div class="ios-item">
             <label>🏃 提早下班 <span class="hint">(≥16:50)</span></label>
@@ -86,15 +86,16 @@
 
     const toStr = (m) => `${Math.floor(m/60).toString().padStart(2,'0')}:${(m%60).toString().padStart(2,'0')}`;
 
+    // 時間常數定義
     const tBaseIn = 500;       // 08:20
     const tFlexEnd = 560;      // 09:20
     const tLunchStart = 710;   // 11:50
     const tLunchEnd = 770;     // 12:50
     const tEarliestOff = 1010; // 16:50
 
+    // 時間軸工具：往回推 (跳過午休)
     function walkBwd(startMin, durationMin) {
-        let current = startMin;
-        let rem = durationMin;
+        let current = startMin, rem = durationMin;
         while (rem > 0) {
             if (current > tLunchEnd) {
                 let step = Math.min(rem, current - tLunchEnd);
@@ -108,41 +109,28 @@
         return current;
     }
 
-    function walkFwd(startMin, durationMin) {
-        let current = startMin;
-        let rem = durationMin;
-        while (rem > 0) {
-            if (current < tLunchStart) {
-                let step = Math.min(rem, tLunchStart - current);
-                current += step; rem -= step;
-            } else if (current >= tLunchStart && current < tLunchEnd) {
-                current = tLunchEnd; 
-            } else {
-                current += rem; rem = 0;
-            }
-        }
-        return current;
+    // 計算兩個時間點的「真實工時」 (用來計算早退缺口)
+    function getWorkMinutes(start, end) {
+        if (start >= end) return 0;
+        let total = end - start;
+        let overlapStart = Math.max(start, tLunchStart);
+        let overlapEnd = Math.min(end, tLunchEnd);
+        if (overlapStart < overlapEnd) total -= (overlapEnd - overlapStart);
+        return total;
     }
 
-    // 更新：加入每段假單的 (Xh) 標示
-    function formatLeaveRanges(start, end) {
-        let ranges = [];
+    // 將請假區間拆成陣列，並計算每段時數 (供 UI 顯示 Xh)
+    function getLeaveChunks(start, end) {
+        let chunks = [];
         if (start < tLunchStart && end > start) {
             let e = Math.min(end, tLunchStart);
-            if (start !== e) {
-                let h = (e - start) / 60;
-                ranges.push(`<span class="badge">${toStr(start)} - ${toStr(e)} <span class="dur-tag">${h}h</span></span>`);
-            }
+            if (start !== e) chunks.push({ s: start, e: e, h: (e - start) / 60 });
         }
         if (end > tLunchEnd && end > start) {
             let s = Math.max(start, tLunchEnd);
-            if (s !== end) {
-                let h = (end - s) / 60;
-                ranges.push(`<span class="badge">${toStr(s)} - ${toStr(end)} <span class="dur-tag">${h}h</span></span>`);
-            }
+            if (s !== end) chunks.push({ s: s, e: end, h: (end - s) / 60 });
         }
-        if (ranges.length === 0) return `<span class="badge">無</span>`;
-        return `<div class="range-group">${ranges.join('')}</div>`;
+        return chunks;
     }
 
     function run() {
@@ -154,42 +142,72 @@
         const inMin = toMin(tIn);
         
         let html = "";
-        let mark7, mark8;
+        
+        let shiftStart = inMin;
+        let lateLeaveList = [];
+        let totalLateLeaveH = 0;
+        let lateMins = 0;
 
-        // === 1. 遲到補救與基準點判斷 ===
-        if (inMin <= tFlexEnd) {
-            // 彈性時間內：依真實刷卡點計算
-            mark7 = walkFwd(inMin, 7 * 60);
-            mark8 = walkFwd(inMin, 8 * 60);
-        } else {
-            // 遲到喪失彈性：基準點強制鎖死在 08:20
-            mark7 = walkFwd(tBaseIn, 7 * 60); // 16:20
-            mark8 = walkFwd(tBaseIn, 8 * 60); // 17:20
-
-            let lateM = inMin - tFlexEnd;
-            let leaveH = 0.5;
-            let leaveEnd = walkFwd(tBaseIn, leaveH * 60);
+        // === 1. 遲到分流邏輯 ===
+        if (inMin > tFlexEnd) {
+            lateMins = inMin - tFlexEnd;
             
-            while (leaveEnd < inMin) {
-                leaveH += 0.5;
-                leaveEnd = walkFwd(tBaseIn, leaveH * 60);
+            if (inMin <= tLunchStart) {
+                // 【狀況 A】上午遲到：只需往前推算到 09:20 內即可合法
+                let leaveH = Math.ceil(lateMins / 30) * 0.5;
+                let virtualIn = inMin - leaveH * 60;
+                
+                shiftStart = virtualIn; // 下班時間由這個合法虛擬點開始算
+                lateLeaveList.push({ s: virtualIn, e: inMin, h: leaveH });
+                totalLateLeaveH = leaveH;
+            } else {
+                // 【狀況 B】曠職整個上午 (下午才來)：強制沒收彈性，鎖死 08:20 基準
+                shiftStart = tBaseIn; // 下班時間被死死鎖定在 08:20 基準
+                
+                // 上午請假固定扣除
+                lateLeaveList.push({ s: tBaseIn, e: tLunchStart, h: 3.5 });
+                totalLateLeaveH += 3.5;
+                
+                // 若下午還晚來，繼續累加下午假單
+                if (inMin > tLunchEnd) {
+                    let gap = inMin - tLunchEnd;
+                    let leaveH = Math.ceil(gap / 30) * 0.5;
+                    let leaveEnd = tLunchEnd + leaveH * 60;
+                    lateLeaveList.push({ s: tLunchEnd, e: leaveEnd, h: leaveH });
+                    totalLateLeaveH += leaveH;
+                }
             }
+        }
+
+        // 渲染遲到 UI
+        if (lateLeaveList.length > 0) {
+            let rangesHtml = lateLeaveList.map(l => 
+                `<span class="badge">${toStr(l.s)} - ${toStr(l.e)} <span class="dur-tag">${l.h}h</span></span>`
+            ).join('');
             
+            let hintMsg = inMin > tLunchStart 
+                ? "💡 曠職上午喪失彈性，由標準班表 08:20 往後請。" 
+                : "💡 彈性內扣除假單後，以此推算下班時間。";
+
             html += `
             <div class="alert-box late">
                 <div class="alert-title red">
-                    <span>⚠️ 遲到 ${lateM} 分鐘</span>
-                    <span>請假 <span class="hl">${leaveH}</span>h</span>
+                    <span>⚠️ 遲到 ${lateMins} 分鐘</span>
+                    <span>請假 <span class="hl">${totalLateLeaveH}</span>h</span>
                 </div>
                 <div class="flex-row">
                     <span style="font-weight:600;">假單區間：</span>
-                    ${formatLeaveRanges(tBaseIn, leaveEnd)}
+                    <div class="range-group">${rangesHtml}</div>
                 </div>
-                <div class="sub-hint">💡 遲到喪失彈性，由標準班表 08:20 往後請。</div>
+                <div class="sub-hint">${hintMsg}</div>
             </div>`;
         }
 
-        // === 2. 並排標準時間 ===
+        // === 2. 並排標準時間 (下班時間正確鎖定不亂延) ===
+        // 永遠基於合法的 shiftStart + 9 小時 (含午休) 計算，確保時間凍結
+        const mark7 = shiftStart + 7 * 60 + 60; 
+        const mark8 = shiftStart + 8 * 60 + 60;
+        
         const disp7 = Math.max(tEarliestOff, mark7);
         const disp8 = Math.max(tEarliestOff, mark8);
         
@@ -219,13 +237,14 @@
                         ✨ 已滿足 ${label}，<span style="text-decoration: underline; text-underline-offset: 3px;">無須請假！</span>
                     </div>`;
                 } else {
-                    let leaveH = 0.5;
+                    let missingWork = getWorkMinutes(earlyMin, targetOff);
+                    let leaveH = Math.ceil(missingWork / 30) * 0.5;
                     let leaveStart = walkBwd(targetOff, leaveH * 60);
-                    
-                    while (leaveStart > earlyMin) {
-                        leaveH += 0.5;
-                        leaveStart = walkBwd(targetOff, leaveH * 60);
-                    }
+
+                    let chunks = getLeaveChunks(leaveStart, targetOff);
+                    let rangesHtml = chunks.map(l => 
+                        `<span class="badge">${toStr(l.s)} - ${toStr(l.e)} <span class="dur-tag">${l.h}h</span></span>`
+                    ).join('');
 
                     return `
                     <div class="alert-box early" style="margin-bottom:10px;">
@@ -235,7 +254,7 @@
                         </div>
                         <div class="flex-row">
                             <span style="font-weight:600;">假單區間：</span>
-                            ${formatLeaveRanges(leaveStart, targetOff)}
+                            <div class="range-group">${rangesHtml}</div>
                         </div>
                         <div class="sub-hint">💡 請假後，只要待到 <b style="color:var(--primary)">${toStr(leaveStart)}</b> 即可達標。</div>
                     </div>`;
