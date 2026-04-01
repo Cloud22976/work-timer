@@ -54,29 +54,14 @@
         .range-group { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
         .dur-tag { color: #E65100; font-size: 13px; margin-left: 6px; background: rgba(230,81,0,0.1); padding: 2px 5px; border-radius: 4px; font-family: -apple-system, sans-serif;}
 
-        /* App 質感提示浮窗 (Toast) */
         #toast {
-            position: fixed;
-            top: 25px;
-            left: 50%;
-            transform: translateX(-50%) translateY(-20px);
-            background: rgba(0, 0, 0, 0.85);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-            opacity: 0;
-            pointer-events: none;
-            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-            z-index: 9999;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-            white-space: nowrap;
+            position: fixed; top: 25px; left: 50%; transform: translateX(-50%) translateY(-20px);
+            background: rgba(0, 0, 0, 0.85); color: white; padding: 12px 20px; border-radius: 20px;
+            font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); z-index: 9999;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2); white-space: nowrap;
         }
-        #toast.show {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
-        }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     </style>
 </head>
 <body>
@@ -107,8 +92,7 @@
     let toastTimeout;
     function showToast(msg) {
         const toast = document.getElementById('toast');
-        toast.textContent = msg;
-        toast.classList.add('show');
+        toast.textContent = msg; toast.classList.add('show');
         clearTimeout(toastTimeout);
         toastTimeout = setTimeout(() => { toast.classList.remove('show'); }, 2500);
     }
@@ -123,29 +107,28 @@
 
         if (inputElement.id === 'tIn') {
             if (mins < 530) { 
-                corrected = "08:50"; 
-                alertMsg = "⚠️ 上班不可早於 08:50，已為您校正";
+                corrected = "08:50"; alertMsg = "⚠️ 上班不可早於 08:50，已為您校正";
             } else if (mins > 710 && mins < 770) {
-                if (mins <= 740) { corrected = "11:50"; } 
-                else { corrected = "12:50"; }
+                if (mins <= 740) { corrected = "11:50"; } else { corrected = "12:50"; }
                 alertMsg = "⚠️ 午休時間不計入，已為您自動避開";
             } else if (mins >= 1040) {
-                corrected = "17:20"; 
-                alertMsg = "⚠️ 已過標準下班時間，建議直接請全天假！";
+                corrected = "17:20"; alertMsg = "⚠️ 已過標準下班時間，建議直接請全天假！";
             }
         } else if (inputElement.id === 'tEarly') {
-            // 提早下班不再阻擋小於 16:50 的時間，只防呆最晚不超過 18:20
-            if (mins > 1100) { 
+            let inMins = document.getElementById('tIn').value ? 
+                document.getElementById('tIn').value.split(':').map(Number).reduce((h, m) => h * 60 + m) : 530;
+            
+            // 【終極防線】提早下班絕對不可能早於上班時間！
+            if (mins < inMins) {
+                corrected = document.getElementById('tIn').value;
+                alertMsg = "⚠️ 提早下班不可早於上班時間！已為您校正";
+            } else if (mins > 1100) { 
                 corrected = "18:20";
                 alertMsg = "⚠️ 最晚不可超過 18:20，已自動校正";
             }
         }
 
-        if (corrected) {
-            inputElement.value = corrected;
-            showToast(alertMsg);
-        }
-        
+        if (corrected) { inputElement.value = corrected; showToast(alertMsg); }
         run(); 
     }
 
@@ -156,12 +139,7 @@
     }
 
     const toStr = (m) => `${Math.floor(m/60).toString().padStart(2,'0')}:${(m%60).toString().padStart(2,'0')}`;
-
-    const tBaseIn = 500;       // 08:20
-    const tFlexEnd = 560;      // 09:20
-    const tLunchStart = 710;   // 11:50
-    const tLunchEnd = 770;     // 12:50
-    const tEarliestOff = 1010; // 16:50
+    const tBaseIn = 500, tFlexEnd = 560, tLunchStart = 710, tLunchEnd = 770, tEarliestOff = 1010;
 
     function walkBwd(startMin, durationMin) {
         let current = startMin, rem = durationMin;
@@ -187,15 +165,20 @@
         return total;
     }
 
+    // 【修正小數點無限輪迴】強制只保留 1 位小數，乾淨俐落！
     function getLeaveChunks(start, end) {
         let chunks = [];
+        const formatH = (s, e) => {
+            let val = (e - s) / 60;
+            return Number.isInteger(val) ? val : Number(val.toFixed(1));
+        };
         if (start < tLunchStart && end > start) {
             let e = Math.min(end, tLunchStart);
-            if (start !== e) chunks.push({ s: start, e: e, h: (e - start) / 60 });
+            if (start !== e) chunks.push({ s: start, e: e, h: formatH(start, e) });
         }
         if (end > tLunchEnd && end > start) {
             let s = Math.max(start, tLunchEnd);
-            if (s !== end) chunks.push({ s: s, e: end, h: (end - s) / 60 });
+            if (s !== end) chunks.push({ s: s, e: end, h: formatH(s, end) });
         }
         return chunks;
     }
@@ -209,7 +192,6 @@
         const inMin = toMin(tIn);
         
         let html = "";
-        
         let shiftStart = inMin;
         let lateLeaveList = [];
         let totalLateLeaveH = 0;
@@ -217,11 +199,9 @@
 
         if (inMin > tFlexEnd) {
             lateMins = inMin - tFlexEnd;
-            
             if (inMin <= tLunchStart) {
                 let leaveH = Math.ceil(lateMins / 30) * 0.5;
                 let virtualIn = inMin - leaveH * 60;
-                
                 shiftStart = virtualIn; 
                 lateLeaveList.push({ s: virtualIn, e: inMin, h: leaveH });
                 totalLateLeaveH = leaveH;
@@ -229,7 +209,6 @@
                 shiftStart = tBaseIn; 
                 lateLeaveList.push({ s: tBaseIn, e: tLunchStart, h: 3.5 });
                 totalLateLeaveH += 3.5;
-                
                 if (inMin > tLunchEnd) {
                     let gap = inMin - tLunchEnd;
                     let leaveH = Math.ceil(gap / 30) * 0.5;
@@ -246,15 +225,8 @@
             ).join('');
             
             let isFullDay = (inMin >= 1040); 
-            
-            let hintMsg = "";
-            if (isFullDay) {
-                hintMsg = "💡 已達標準下班時間 17:20，請直接填寫整天假單 (8h)。";
-            } else if (inMin > tLunchStart) {
-                hintMsg = "💡 曠職上午喪失彈性，由標準班表 08:20 往後請。";
-            } else {
-                hintMsg = "💡 彈性內扣除假單後，以此推算下班時間。";
-            }
+            let hintMsg = isFullDay ? "💡 已達標準下班時間 17:20，請直接填寫整天假單 (8h)。" : 
+                          (inMin > tLunchStart ? "💡 曠職上午喪失彈性，由標準班表 08:20 往後請。" : "💡 彈性內扣除假單後，以此推算下班時間。");
 
             html += `
             <div class="alert-box late">
@@ -269,15 +241,11 @@
                 <div class="sub-hint">${hintMsg}</div>
             </div>`;
             
-            if (isFullDay) {
-                document.getElementById('result').innerHTML = html;
-                return;
-            }
+            if (isFullDay) { document.getElementById('result').innerHTML = html; return; }
         }
 
         const mark7 = shiftStart + 7 * 60 + 60; 
         const mark8 = shiftStart + 8 * 60 + 60;
-        
         const disp7 = Math.max(tEarliestOff, mark7);
         const disp8 = Math.max(tEarliestOff, mark8);
         
@@ -296,7 +264,7 @@
         </div>`;
 
         if (tEarly) {
-            let earlyMin = toMin(tEarly);
+            let earlyMin = Math.max(toMin(tEarly), inMin); // 雙重防護：就算繞過檢查，計算時也絕對不允許早於上班時間
             html += `<div class="section-title">🏃 提早分析 (${toStr(earlyMin)})</div>`;
 
             function generateLeaveInfo(targetOff, label) {
@@ -329,7 +297,6 @@
                     </div>`;
                 }
             }
-
             html += generateLeaveInfo(disp7, "7h (最低)");
             html += generateLeaveInfo(disp8, "8h (標準)");
         }
