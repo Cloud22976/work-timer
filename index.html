@@ -24,8 +24,6 @@
         
         .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         h2 { font-size: 22px; margin: 0; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 8px;}
-        
-        /* 版本號小徽章樣式 */
         .version-badge { font-size: 12px; font-weight: 600; background: #E5F0FF; color: var(--primary); padding: 2px 8px; border-radius: 10px; font-family: monospace; letter-spacing: 0.5px;}
 
         .clear-btn { background: var(--secondary); color: #555; border: none; padding: 6px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
@@ -74,7 +72,7 @@
 
 <div class="ios-card">
     <div class="header-row">
-        <h2>工時專家 <span class="version-badge">v2.0</span></h2>
+        <h2>工時專家 <span class="version-badge">v2.1</span></h2>
         <button class="clear-btn" onclick="clearAll()">重置</button>
     </div>
 
@@ -109,12 +107,10 @@
         let corrected = null;
         let alertMsg = "";
 
+        // v2.1 修正：拔除午休時間(11:50~12:49)的強制彈回機制，讓使用者可如實填寫
         if (inputElement.id === 'tIn') {
             if (mins < 530) { 
                 corrected = "08:50"; alertMsg = "⚠️ 上班不可早於 08:50，已為您校正";
-            } else if (mins > 710 && mins < 770) {
-                if (mins <= 740) { corrected = "11:50"; } else { corrected = "12:50"; }
-                alertMsg = "⚠️ 午休時間不計入，已為您自動避開";
             } else if (mins >= 1040) {
                 corrected = "17:20"; alertMsg = "⚠️ 已過標準下班時間，建議直接請全天假！";
             }
