@@ -35,7 +35,6 @@
         .hint { font-size: 12px; color: var(--gray); font-weight: normal; margin-top: 4px; }
         input[type="time"] { border: none; background: var(--secondary); padding: 8px 12px; border-radius: 8px; font-size: 17px; color: var(--primary); font-weight: 700; font-family: inherit; }
 
-        /* v2.3 全新主視覺排版 */
         .box-primary { background: #fff; border: 2px solid var(--primary); border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 8px; box-shadow: 0 6px 16px rgba(0,122,255,0.15); }
         .box-primary .lbl { font-size: 15px; font-weight: 700; color: var(--primary); margin-bottom: 5px; }
         .box-primary .val { font-size: 40px; font-weight: 800; color: var(--primary); line-height: 1.1; }
@@ -73,7 +72,7 @@
 
 <div class="ios-card">
     <div class="header-row">
-        <h2>工時專家 <span class="version-badge">v2.3</span></h2>
+        <h2>工時專家 <span class="version-badge">v2.4</span></h2>
         <button class="clear-btn" onclick="clearAll()">重置</button>
     </div>
 
@@ -170,19 +169,15 @@
         let durStyle = isMuted ? "background:#D1D1D6; color:#fff;" : "";
 
         if (canSplit) {
-            return `<div class="range-group">` + chunks.map(c => 
+            return chunks.map(c => 
                 `<span class="badge" style="${badgeStyle}">${toStr(c.s)} - ${toStr(c.e)} <span class="dur-tag" style="${durStyle}">${c.h}h</span></span>`
-            ).join('') + `</div>`;
+            ).join('');
         } else {
             let totalH = getWorkMinutes(start, end) / 60;
             let mergeBg = isMuted ? "#F2F2F7" : "#FFF4E5";
             let mergeBorder = isMuted ? "#E5E5EA" : "#FFE0B2";
             let mergeText = isMuted ? "#8E8E93" : "#E65100";
-            let html = `<span class="badge" style="background:${mergeBg}; border:1px solid ${mergeBorder}; color:${mergeText}">${toStr(start)} - ${toStr(end)} <span class="dur-tag" style="background:#fff; color:${mergeText}; border:1px solid ${mergeBorder}">${totalH}h</span></span>`;
-            if (chunks.length > 1 && !isMuted) {
-                html += `<div style="font-size:12px; color:#E65100; margin-top:6px; font-weight:600;">⚡ 跨越午休，請直接填寫此區間單張假單，<br>系統會自動扣除午休計為 ${totalH}h。</div>`;
-            }
-            return `<div class="range-group">${html}</div>`;
+            return `<span class="badge" style="background:${mergeBg}; border:1px solid ${mergeBorder}; color:${mergeText}">${toStr(start)} - ${toStr(end)} <span class="dur-tag" style="background:#fff; color:${mergeText}; border:1px solid ${mergeBorder}">${totalH}h</span></span>`;
         }
     }
 
@@ -221,7 +216,10 @@
                     <span>${isFullDay ? '🚨 需請全天假' : `⚠️ 遲到 ${lateMins} 分鐘`}</span>
                     <span>請假 <span class="hl">${totalLateLeaveH}</span>h</span>
                 </div>
-                <div class="flex-row"><span style="font-weight:600;">假單區間：</span>${formatLeaveRanges(lateLeaveStart, lateLeaveEnd)}</div>
+                <div class="flex-row">
+                    <span style="font-weight:600;">假單區間：</span>
+                    <div class="range-group">${formatLeaveRanges(lateLeaveStart, lateLeaveEnd)}</div>
+                </div>
                 <div class="sub-hint">${hintMsg}</div>
             </div>`;
             if (isFullDay) { document.getElementById('result').innerHTML = html; return; }
@@ -229,7 +227,6 @@
 
         let target7, target8;
 
-        // v2.3 全新視覺：8h 是主角，7h 小聲說
         if (isBigLate) {
             target7 = target8 = tStandardOff; 
             html += `
@@ -261,22 +258,44 @@
             function generateLeaveInfo(targetOff, label, isMuted = false) {
                 if (earlyMin >= targetOff) {
                     if (isMuted) {
-                        return `
-                        <div class="alert-box" style="background:#F2F2F7; color:#8E8E93; font-weight:600; margin-bottom:10px; text-align:center; padding: 10px; border: 1px dashed #D1D1D6;">
-                            🤫 若只求滿 ${label}，其實已經達標免請假了
-                        </div>`;
+                        return `<div class="alert-box" style="background:#F2F2F7; color:#8E8E93; font-weight:600; margin-bottom:10px; text-align:center; padding: 10px; border: 1px dashed #D1D1D6;">🤫 若只求滿 ${label}，其實已經達標免請假了</div>`;
                     } else {
-                        return `
-                        <div class="alert-box" style="background:var(--success-bg); border-left:5px solid var(--success); color:#1B5E20; font-weight:700; margin-bottom:10px;">
-                            ✨ 已滿足 ${label}，<span style="text-decoration: underline; text-underline-offset: 3px;">無須請假！</span>
-                        </div>`;
+                        return `<div class="alert-box" style="background:var(--success-bg); border-left:5px solid var(--success); color:#1B5E20; font-weight:700; margin-bottom:10px;">✨ 已滿足 ${label}，<span style="text-decoration: underline; text-underline-offset: 3px;">無須請假！</span></div>`;
                     }
                 } else {
                     let missingWork = getWorkMinutes(earlyMin, targetOff);
                     let leaveH = Math.ceil(missingWork / 30) * 0.5;
-                    let anchorOff = Math.min(targetOff, tStandardOff); 
-                    let leaveSlipEnd = anchorOff;
-                    let leaveSlipStart = walkBwd(anchorOff, leaveH * 60);
+                    
+                    // v2.4 核心：早晚雙切最佳化演算法
+                    let mLeaveH = 0;
+                    let aLeaveH = leaveH;
+                    let splitNote = "";
+
+                    // 只有未被強制鎖死彈性(小遲到/正常) 才能將假單往前推算到 08:20
+                    if (!isBigLate) {
+                        // 算出 08:20 到你「虛擬上班起點」之間，還有多少 0.5h 的額度可以使用
+                        let maxMorningH = Math.floor(getWorkMinutes(tBaseIn, shiftStart) / 30) * 0.5;
+                        mLeaveH = Math.min(leaveH, maxMorningH);
+                        aLeaveH = leaveH - mLeaveH;
+                    }
+
+                    let slipsHtml = "";
+
+                    // 1. 如果有額度分到早上，產生早上的假單
+                    if (mLeaveH > 0) {
+                        let mSlipStart = walkBwd(shiftStart, mLeaveH * 60);
+                        slipsHtml += formatLeaveRanges(mSlipStart, shiftStart, isMuted);
+                        splitNote = `<div style="font-size:12px; font-weight:700; color:var(--primary); margin-bottom:6px;">✨ 已啟用早晚分段請假 (避開17:20極限)</div>`;
+                    }
+                    
+                    // 2. 剩下的假單放到下午，並鎖死 17:20 邊界
+                    if (aLeaveH > 0) {
+                        let anchorOff = Math.min(targetOff, tStandardOff); 
+                        let aSlipEnd = anchorOff;
+                        let aSlipStart = walkBwd(anchorOff, aLeaveH * 60);
+                        slipsHtml += formatLeaveRanges(aSlipStart, aSlipEnd, isMuted);
+                    }
+
                     let hitTime = walkBwd(targetOff, leaveH * 60);
 
                     let boxStyle = isMuted ? "background:#FAFAFA; border:1px dashed #D1D1D6;" : "background:#fff; border:1px solid #E5E5EA;";
@@ -290,16 +309,16 @@
                             <span style="${titleStyle}">🎯 目標 ${label}</span>
                             <span style="${titleStyle}">請假 <span class="hl" style="${dangerStyle}">${leaveH}</span>h</span>
                         </div>
+                        ${splitNote}
                         <div class="flex-row">
                             <span style="font-weight:600; ${hintStyle}">假單區間：</span>
-                            ${formatLeaveRanges(leaveSlipStart, leaveSlipEnd, isMuted)}
+                            <div class="range-group">${slipsHtml}</div>
                         </div>
                         <div class="sub-hint" style="${hintStyle}">💡 請假後，只要待到 <b style="color:${isMuted?'#8E8E93':'var(--primary)'}">${toStr(hitTime)}</b> 即可達標。</div>
                     </div>`;
                 }
             }
             
-            // v2.3 核心修改：先印 8h，再印 7h(且設定為灰階小聲版)
             if (isBigLate) {
                 html += generateLeaveInfo(target8, "標準班表 (17:20)");
             } else {
